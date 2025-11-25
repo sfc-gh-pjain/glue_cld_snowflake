@@ -1,0 +1,211 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Creates an S3 bucket, a Glue Database for Iceberg, a Glue IAM Role with access
+  to the bucket and Glue, and a Glue ETL job (Glue 4.0) that can create an Iceberg table.
+  Parameters will prompt for database name, role name, and bucket name at deploy time.
+
+Parameters:
+  GlueDatabaseName:
+    Type: String
+    Description: Name of the AWS Glue Database to host Iceberg tables
+    AllowedPattern: '^[a-zA-Z0-9_]+$'
+  GlueRoleName:
+    Type: String
+    Description: Name of the IAM Role for the Glue job
+    AllowedPattern: '^[a-zA-Z0-9+=,.@_-]+$'
+  DataBucketName:
+    Type: String
+    Description: Name of the S3 bucket to store Iceberg data and scripts
+    AllowedPattern: '^[a-z0-9.-]{3,63}$'
+  S3ScriptLocation:
+    Type: String
+    Description: Full S3 URI to the Glue ETL script (existing bucket), e.g., s3://my-bucket/path/create_iceberg_table.py
+  SnowflakeUserArn:
+    Type: String
+    Description: Snowflake Storage Integration AWS IAM User ARN (optional - leave empty if not using Snowflake)
+    Default: ""
+  SnowflakeExternalId:
+    Type: String
+    Description: Snowflake Storage Integration External ID (optional - leave empty if not using Snowflake)
+    Default: ""
+
+Conditions:
+  HasSnowflakeIntegration: !Not [!Equals [!Ref SnowflakeUserArn, ""]]
+
+Resources:
+  GlueServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref GlueRoleName
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: glue.amazonaws.com
+            Action: sts:AssumeRole
+          - !If
+            - HasSnowflakeIntegration
+            - Effect: Allow
+              Principal:
+                AWS: !Ref SnowflakeUserArn
+              Action: sts:AssumeRole
+              Condition:
+                StringEquals:
+                  sts:ExternalId: !Ref SnowflakeExternalId
+            - !Ref AWS::NoValue
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole
+      Policies:
+        - PolicyName: GlueIcebergS3Access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:ListBucket
+                Resource: !Sub arn:${AWS::Partition}:s3:::${DataBucketName}
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                  - s3:GetObjectTagging
+                  - s3:PutObjectTagging
+                Resource: !Sub arn:${AWS::Partition}:s3:::${DataBucketName}/*
+              - Effect: Allow
+                Action:
+                  - glue:*  # Full Glue access (simplified); narrow if desired
+                Resource: '*'
+
+  GlueDatabase:
+    Type: AWS::Glue::Database
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseInput:
+        Name: !Ref GlueDatabaseName
+        Description: Iceberg database
+
+  GlueJobSalesTableScript1:
+    Type: AWS::Glue::Job
+    Properties:
+      Name: !Sub iceberg-sales-table-${GlueDatabaseName}
+      Role: !GetAtt GlueServiceRole.Arn
+      GlueVersion: '4.0'
+      NumberOfWorkers: 2
+      WorkerType: G.1X
+      Command:
+        Name: glueetl
+        PythonVersion: '3'
+        ScriptLocation: !Sub s3://${DataBucketName}/scripts/iceberg_cld_demo_sales_table_script_1.py
+      ExecutionProperty:
+        MaxConcurrentRuns: 1
+      DefaultArguments:
+        "--enable-glue-datacatalog": "true"
+        "--datalake-formats": "iceberg"
+        "--job-bookmark-option": "job-bookmark-disable"
+        "--dataBucket": !Ref DataBucketName
+        "--glueDatabase": !Ref GlueDatabaseName
+        "--conf": !Sub >-
+          spark.sql.extensions=org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions
+          --conf spark.sql.catalog.glue_catalog=org.apache.iceberg.spark.SparkCatalog
+          --conf spark.sql.catalog.glue_catalog.catalog-impl=org.apache.iceberg.aws.glue.GlueCatalog
+          --conf spark.sql.catalog.glue_catalog.io-impl=org.apache.iceberg.aws.s3.S3FileIO
+          --conf spark.sql.catalog.glue_catalog.warehouse=s3://${DataBucketName}/iceberg-warehouse
+
+  GlueJobCustomerTableScript2:
+    Type: AWS::Glue::Job
+    Properties:
+      Name: !Sub iceberg-customer-table-${GlueDatabaseName}
+      Role: !GetAtt GlueServiceRole.Arn
+      GlueVersion: '4.0'
+      NumberOfWorkers: 2
+      WorkerType: G.1X
+      Command:
+        Name: glueetl
+        PythonVersion: '3'
+        ScriptLocation: !Sub s3://${DataBucketName}/scripts/iceberg_cld_demo_customer_table_script_2.py
+      ExecutionProperty:
+        MaxConcurrentRuns: 1
+      DefaultArguments:
+        "--enable-glue-datacatalog": "true"
+        "--datalake-formats": "iceberg"
+        "--job-bookmark-option": "job-bookmark-disable"
+        "--dataBucket": !Ref DataBucketName
+        "--glueDatabase": !Ref GlueDatabaseName
+        "--conf": !Sub >-
+          spark.sql.extensions=org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions
+          --conf spark.sql.catalog.glue_catalog=org.apache.iceberg.spark.SparkCatalog
+          --conf spark.sql.catalog.glue_catalog.catalog-impl=org.apache.iceberg.aws.glue.GlueCatalog
+          --conf spark.sql.catalog.glue_catalog.io-impl=org.apache.iceberg.aws.s3.S3FileIO
+          --conf spark.sql.catalog.glue_catalog.warehouse=s3://${DataBucketName}/iceberg-warehouse
+
+  GlueJobSalesReportTableScript3:
+    Type: AWS::Glue::Job
+    Properties:
+      Name: !Sub iceberg-sales-report-${GlueDatabaseName}
+      Role: !GetAtt GlueServiceRole.Arn
+      GlueVersion: '4.0'
+      NumberOfWorkers: 2
+      WorkerType: G.1X
+      Command:
+        Name: glueetl
+        PythonVersion: '3'
+        ScriptLocation: !Sub s3://${DataBucketName}/scripts/iceberg_cld_demo_sales_report_table_script_3.py
+      ExecutionProperty:
+        MaxConcurrentRuns: 1
+      DefaultArguments:
+        "--enable-glue-datacatalog": "true"
+        "--datalake-formats": "iceberg"
+        "--job-bookmark-option": "job-bookmark-disable"
+        "--dataBucket": !Ref DataBucketName
+        "--glueDatabase": !Ref GlueDatabaseName
+        "--conf": !Sub >-
+          spark.sql.extensions=org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions
+          --conf spark.sql.catalog.glue_catalog=org.apache.iceberg.spark.SparkCatalog
+          --conf spark.sql.catalog.glue_catalog.catalog-impl=org.apache.iceberg.aws.glue.GlueCatalog
+          --conf spark.sql.catalog.glue_catalog.io-impl=org.apache.iceberg.aws.s3.S3FileIO
+          --conf spark.sql.catalog.glue_catalog.warehouse=s3://${DataBucketName}/iceberg-warehouse
+
+  GlueJobSnowReportTableScript4:
+    Type: AWS::Glue::Job
+    Properties:
+      Name: !Sub iceberg-snow-report-${GlueDatabaseName}
+      Role: !GetAtt GlueServiceRole.Arn
+      GlueVersion: '4.0'
+      NumberOfWorkers: 2
+      WorkerType: G.1X
+      Command:
+        Name: glueetl
+        PythonVersion: '3'
+        ScriptLocation: !Sub s3://${DataBucketName}/scripts/iceberg_cld_demo_snow_report_table_script_4.py
+      ExecutionProperty:
+        MaxConcurrentRuns: 1
+      DefaultArguments:
+        "--enable-glue-datacatalog": "true"
+        "--datalake-formats": "iceberg"
+        "--job-bookmark-option": "job-bookmark-disable"
+        "--dataBucket": !Ref DataBucketName
+        "--glueDatabase": !Ref GlueDatabaseName
+        "--conf": !Sub >-
+          spark.sql.extensions=org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions
+          --conf spark.sql.catalog.glue_catalog=org.apache.iceberg.spark.SparkCatalog
+          --conf spark.sql.catalog.glue_catalog.catalog-impl=org.apache.iceberg.aws.glue.GlueCatalog
+          --conf spark.sql.catalog.glue_catalog.io-impl=org.apache.iceberg.aws.s3.S3FileIO
+          --conf spark.sql.catalog.glue_catalog.warehouse=s3://${DataBucketName}/iceberg-warehouse
+
+Outputs:
+  Bucket:
+    Description: Data bucket for Iceberg tables and scripts
+    Value: !Ref DataBucketName
+  Database:
+    Description: Glue database name
+    Value: !Ref GlueDatabaseName
+  GlueRole:
+    Description: Glue IAM Role name
+    Value: !Ref GlueRoleName
+  GlueJobName:
+    Description: Glue job to create Iceberg table
+    Value: !Ref GlueIcebergJob
+
+
