@@ -15,7 +15,7 @@ Parameters:
     AllowedPattern: '^[a-zA-Z0-9+=,.@_-]+$'
   DataBucketName:
     Type: String
-    Description: Name of the S3 bucket to store Iceberg data and metadata, e.g. bucketname/path no need to specify s3 URI
+    Description: Name of the S3 bucket to store Iceberg data and metadata, e.g. Just the bucket name like (mys3bucket-123), no need to specify s3 URI
     AllowedPattern: '^[a-z0-9\.\-]{3,63}$'
   S3ScriptLocation:
     Type: String
