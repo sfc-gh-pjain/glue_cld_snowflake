@@ -3,6 +3,7 @@ Description: >
   Creates an S3 bucket, a Glue Database for Iceberg, a Glue IAM Role with access
   to the bucket and Glue, and a Glue ETL job (Glue 4.0) that can create an Iceberg table.
   Parameters will prompt for database name, role name, and bucket name at deploy time.
+  Includes Lake Formation permissions for seamless Iceberg table access.
 
 Parameters:
   GlueDatabaseName:
@@ -85,6 +86,50 @@ Resources:
       DatabaseInput:
         Name: !Ref GlueDatabaseName
         Description: Iceberg database
+
+  # Lake Formation permission for the database
+  LakeFormationDatabasePermission:
+    Type: AWS::LakeFormation::Permissions
+    Properties:
+      DataLakePrincipal:
+        DataLakePrincipalIdentifier: !GetAtt GlueServiceRole.Arn
+      Permissions:
+        - CREATE_TABLE
+        - ALTER
+        - DROP
+        - DESCRIBE
+      Resource:
+        DatabaseResource:
+          Name: !Ref GlueDatabaseName
+    DependsOn:
+      - GlueDatabase
+      - GlueServiceRole
+
+  # Lake Formation permission for all tables in the database
+  LakeFormationTablePermission:
+    Type: AWS::LakeFormation::Permissions
+    Properties:
+      DataLakePrincipal:
+        DataLakePrincipalIdentifier: !GetAtt GlueServiceRole.Arn
+      Permissions:
+        - SELECT
+        - INSERT
+        - DELETE
+        - DESCRIBE
+        - ALTER
+      PermissionsWithGrantOption:
+        - SELECT
+        - INSERT
+        - DELETE
+        - DESCRIBE
+        - ALTER
+      Resource:
+        TableResource:
+          DatabaseName: !Ref GlueDatabaseName
+          TableWildcard: {}
+    DependsOn:
+      - GlueDatabase
+      - GlueServiceRole
 
   GlueJobSalesTableScript1:
     Type: AWS::Glue::Job
@@ -216,5 +261,3 @@ Outputs:
   GlueJobSnowReport:
     Description: Glue job for snow report
     Value: !Ref GlueJobSnowReportTableScript4
-
-
