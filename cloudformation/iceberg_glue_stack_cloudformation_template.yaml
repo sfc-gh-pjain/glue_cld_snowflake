@@ -19,7 +19,7 @@ Parameters:
     AllowedPattern: '^[a-z0-9\.\-]{3,63}$'
   S3ScriptLocation:
     Type: String
-    Description: Full S3 URI to the Glue ETL script (existing bucket), e.g., s3://bucketname/path/scripts where you saved iceberg_cld_demo_sales_table_script_1.py
+    Description: Full S3 URI to the Glue ETL scripts (existing bucket), e.g., s3://bucketname/path/scripts  note no extra '/'
   SnowflakeUserArn:
     Type: String
     Description: Snowflake Storage Integration AWS IAM User ARN (optional - leave empty if not using Snowflake)
@@ -97,7 +97,7 @@ Resources:
       Command:
         Name: glueetl
         PythonVersion: '3'
-        ScriptLocation: !Sub s3://${S3ScriptLocation}/iceberg_cld_demo_sales_table_script_1.py
+        ScriptLocation: !Sub ${S3ScriptLocation}/iceberg_cld_demo_sales_table_script_1.py
       ExecutionProperty:
         MaxConcurrentRuns: 1
       DefaultArguments:
@@ -124,7 +124,7 @@ Resources:
       Command:
         Name: glueetl
         PythonVersion: '3'
-        ScriptLocation: !Sub s3://${S3ScriptLocation}/iceberg_cld_demo_customer_table_script_2.py
+        ScriptLocation: !Sub ${S3ScriptLocation}/iceberg_cld_demo_customer_table_script_2.py
       ExecutionProperty:
         MaxConcurrentRuns: 1
       DefaultArguments:
@@ -151,7 +151,7 @@ Resources:
       Command:
         Name: glueetl
         PythonVersion: '3'
-        ScriptLocation: !Sub s3://${S3ScriptLocation}/iceberg_cld_demo_sales_report_table_script_3.py
+        ScriptLocation: !Sub ${S3ScriptLocation}/iceberg_cld_demo_sales_report_table_script_3.py
       ExecutionProperty:
         MaxConcurrentRuns: 1
       DefaultArguments:
@@ -178,7 +178,7 @@ Resources:
       Command:
         Name: glueetl
         PythonVersion: '3'
-        ScriptLocation: !Sub s3://${S3ScriptLocation}/iceberg_cld_demo_snow_report_table_script_4.py
+        ScriptLocation: !Sub ${S3ScriptLocation}/iceberg_cld_demo_snow_report_table_script_4.py
       ExecutionProperty:
         MaxConcurrentRuns: 1
       DefaultArguments:
