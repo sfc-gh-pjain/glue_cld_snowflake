@@ -204,8 +204,17 @@ Outputs:
   GlueRole:
     Description: Glue IAM Role name
     Value: !Ref GlueRoleName
-  GlueJobName:
-    Description: Glue job to create Iceberg table
-    Value: !Ref GlueIcebergJob
+  GlueJobSalesTable:
+    Description: Glue job for sales table
+    Value: !Ref GlueJobSalesTableScript1
+  GlueJobCustomerTable:
+    Description: Glue job for customer table
+    Value: !Ref GlueJobCustomerTableScript2
+  GlueJobSalesReport:
+    Description: Glue job for sales report
+    Value: !Ref GlueJobSalesReportTableScript3
+  GlueJobSnowReport:
+    Description: Glue job for snow report
+    Value: !Ref GlueJobSnowReportTableScript4
 
 
